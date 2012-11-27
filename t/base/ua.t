@@ -3,7 +3,7 @@
 use strict;
 use Test;
 
-plan tests => 35;
+plan tests => 40;
 
 use LWP::UserAgent;
 
@@ -94,11 +94,30 @@ ok($ua->ssl_opts("verify_hostname"), 0);
 $ua = LWP::UserAgent->new(ssl_opts => { verify_hostname => 1 });
 ok($ua->ssl_opts("verify_hostname"), 1);
 
-$ENV{http_proxy} = "http://example.com";
-$ua = LWP::UserAgent->new;
-ok($ua->proxy('http'), undef);
-$ua = LWP::UserAgent->new(env_proxy => 1);;
-ok($ua->proxy('http'), "http://example.com");
+{
+    $ENV{HTTP_PROXY}= "http://example.com";
+    $ENV{http_proxy}= "http://otherexample.com";
+    my @warn;
+    local $SIG{__WARN__}= sub { my ($msg)= @_; $msg=~s/ at .*\z//s; push @warn, $msg };
+    # test that we get "HTTP_PROXY" when it is set and differs from "http_proxy".
+    $ua = LWP::UserAgent->new;
+    ok($ua->proxy('http'), undef);
+    $ua = LWP::UserAgent->new(env_proxy => 1);;
+    ok($ua->proxy('http'), "http://example.com");
+    ok("@warn","Environment contains multiple differing definitions for 'http_proxy'.\n"
+              ."Using value from 'HTTP_PROXY' (http://example.com) and ignoring 'http_proxy' (http://otherexample.com)");
+}
+
+# test that if only one of the two is set we can handle either.
+for my $type ('http_proxy', 'HTTP_PROXY') {
+    delete $ENV{HTTP_PROXY};
+    delete $ENV{http_proxy};
+    $ENV{$type} = "http://example.com";
+    $ua = LWP::UserAgent->new;
+    ok($ua->proxy('http'), undef);
+    $ua = LWP::UserAgent->new(env_proxy => 1);;
+    ok($ua->proxy('http'), "http://example.com");
+}
 
 $ENV{PERL_LWP_ENV_PROXY} = 1;
 $ua = LWP::UserAgent->new();
